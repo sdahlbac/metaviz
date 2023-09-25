@@ -24,5 +24,5 @@ type Relation struct {
 
 type Target struct {
 	Table  string
-	Fields interface{}
+	Fields map[string]interface{}
 }
