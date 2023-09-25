@@ -11,14 +11,14 @@ import (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "goerd",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+	Use:   "metaviz",
+	Short: "Generate an ER diagram from metadata",
+	Long: `
+	Generate an ER diagram from metadata.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	The metadata is expected to be in JSON format, and the generator will look for all files with the .json extension in the specified directory.
+	The generator will generate a file in the ER format, which can be opened with the ER diagram tool of your choice (read: BurntSushi/erd).
+	`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
