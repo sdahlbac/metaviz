@@ -16,10 +16,12 @@ type Field struct {
 }
 
 type Relation struct {
-	Type   string
-	Id     string
-	Name   string
-	Target Target
+	Type      string
+	Id        string
+	Name      string
+	Target    Target
+	isHandled bool
+	FromTable string // Used to track which table the relation was found in
 }
 
 type Target struct {

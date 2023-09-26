@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -12,9 +13,9 @@ func Generate(metadataDir string, outputFile string, includeProperties bool) err
 
 	var entities []Entity
 
-	var relationships = make(map[string][]Relation)
+	var relationships = make(map[string][]*Relation)
 
-	fd, err := os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE, 0666)
+	fd, err := os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		log.Fatalf("Error opening output file: %v", err)
 	}
@@ -50,13 +51,41 @@ func Generate(metadataDir string, outputFile string, includeProperties bool) err
 					log.Fatalf("Error generating property: %v", err)
 				}
 				fd.WriteString(s)
+
+				if strings.HasSuffix(field.Id, "_lookup") {
+					name, _ := strings.CutSuffix(field.Id, "_lookup")
+					table := strings.Title(name)
+					log.Printf("Found lookup table %s", table)
+					// do we have a custom table in same namespace?
+					ns := strings.Split(entity.Name, "_")[0]
+					lookupTableName := ns + "_" + table
+					lookupTableIdx := slices.IndexFunc(entities, func(e Entity) bool {
+						return e.Name == lookupTableName || e.Name == lookupTableName+"s"
+					})
+					if lookupTableIdx != -1 {
+						lookupTable := entities[lookupTableIdx]
+						fd.WriteString(fmt.Sprintf("%s 1--1 %s {label: \"%s\"}\n", entity.Name, lookupTable.Name, field.Id))
+					} else {
+						fd.WriteString(fmt.Sprintf("%s 1--1 %s {label: \"%s\"}\n", entity.Name, "General_Lookups", field.Id))
+					}
+				}
 			}
 		}
 		fd.WriteString(fmt.Sprintf("\n"))
 
-		relationships[entity.Name] = entity.Relations
+		//relationships[entity.Name] = entity.Relations
 
 		for _, relation := range entity.Relations {
+			if relationships[entity.Name] == nil {
+				relationships[entity.Name] = make([]*Relation, 0)
+			}
+			relation.FromTable = entity.Name
+
+			relationships[entity.Name] = append(relationships[entity.Name], &relation)
+			if relationships[relation.Target.Table] == nil {
+				relationships[relation.Target.Table] = make([]*Relation, 0)
+			}
+			relationships[relation.Target.Table] = append(relationships[relation.Target.Table], &relation)
 			s, err := generateSingleRelation(relation, entity)
 			if err != nil {
 				log.Fatalf("Error generating relation: %v", err)
@@ -65,6 +94,16 @@ func Generate(metadataDir string, outputFile string, includeProperties bool) err
 		}
 		fd.WriteString(fmt.Sprintf("\n"))
 	}
+
+	// Skip self-references
+	// do we have a reverse relationship?
+	// rels, err := CollectRelations(relationships)
+	// if err != nil {
+	// 	log.Fatalf("Error collecting relations: %v", err)
+	// }
+	// for _, rel := range rels {
+	// 	fd.WriteString(rel)
+	// }
 
 	// for sKey, sourceRels := range relationships {
 	// 	for _, sourceRel := range sourceRels {
@@ -99,6 +138,69 @@ func Generate(metadataDir string, outputFile string, includeProperties bool) err
 	// }
 
 	return nil
+}
+
+func CollectRelations(relationships map[string][]*Relation) ([]string, error) {
+	var rels []string
+	for sourceTable, relations := range relationships {
+		log.Printf("\n\nChecking %s", sourceTable)
+		slices.SortStableFunc(relations, func(a, b *Relation) int {
+			return strings.Compare(a.Id, b.Id)
+		})
+		//relations = slices.Compact(relations)
+
+		for _, relation := range relations {
+			if relation.isHandled {
+				continue
+			}
+			log.Printf(" - rel %s %v", relation.Id, relation)
+			if sourceTable == relation.Target.Table {
+				// Skip self-references
+				continue
+			}
+
+			idx := slices.IndexFunc(relations, func(n *Relation) bool {
+				return (n.Target.Table == relation.FromTable || relation.Target.Table == n.FromTable) &&
+					relation.Id != n.Id
+			})
+
+			if idx != -1 {
+				reverseRelation := relations[idx]
+				var multiplicity string
+				if relation.Type == "array" {
+					multiplicity = "*"
+				} else {
+					multiplicity = "1"
+				}
+
+				var reverseMultiplicity string
+				if reverseRelation.Type == "array" {
+					reverseMultiplicity = "*"
+				} else {
+					reverseMultiplicity = "1"
+				}
+
+				relation.isHandled = true
+				reverseRelation.isHandled = true
+				log.Printf("Found reverse relationship %s (%s) between %s and %s", relation.Id, reverseRelation.Id, sourceTable, relation.Target.Table)
+				rels = append(rels, fmt.Sprintf("%s %s--%s %s {label: \"%s - %s\"}\n", sourceTable, reverseMultiplicity, multiplicity, relation.Target.Table, relation.Id, reverseRelation.Id))
+			} else {
+				// no reverse relation found
+				var multiplicity string
+				if relation.Type == "array" {
+					multiplicity = "*"
+				} else {
+					multiplicity = "1"
+				}
+				relation.isHandled = true
+				log.Printf("Found single relationship %s between %s and %s", relation.Id, sourceTable, relation.Target.Table)
+
+				rels = append(rels, fmt.Sprintf("%s 1--%s %s {label: \"%s\"}\n", sourceTable, multiplicity, relation.Target.Table, relation.Id))
+			}
+		}
+
+	}
+	return rels, nil
 }
 
 func generateSingleRelation(relation Relation, entity Entity) (string, error) {
