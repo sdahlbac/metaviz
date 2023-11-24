@@ -16,7 +16,6 @@ var rootCmd = &cobra.Command{
 	Long: `
 	Generate an ER diagram from metadata.
 
-	The metadata is expected to be in JSON format, and the generator will look for all files with the .json extension in the specified directory.
 	The generator will generate a file in the ER format, which can be opened with the ER diagram tool of your choice (read: BurntSushi/erd).
 	`,
 	// Uncomment the following line if your bare application

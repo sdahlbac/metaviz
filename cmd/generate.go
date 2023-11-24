@@ -31,7 +31,6 @@ var generateCmd = &cobra.Command{
 	},
 }
 
-var properties bool
 
 func init() {
 	rootCmd.AddCommand(generateCmd)
